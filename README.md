@@ -1,4 +1,4 @@
-# 🎵 Apple Music Album Link Extractor
+# 🎵 Apple Music Album Link Generator
 
 A Python-based utility that reads an Excel spreadsheet containing artist and album names, queries the Apple Music website, and retrieves **album links only** (no singles). The script outputs results to both an `.xlsx` and `.txt` file. It includes built-in random delays to avoid being blocked by the server.
 
