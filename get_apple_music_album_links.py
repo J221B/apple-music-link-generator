@@ -1,73 +1,90 @@
 import pandas as pd
 import requests
+import urllib.parse
 import time
+import os
 import random
-from bs4 import BeautifulSoup
-from urllib.parse import quote_plus
 
-def clean_query(artist, album):
-    return quote_plus(f"{artist} {album}")
+def clean_query(text):
+    return text.replace("’", "'").replace("–", "-").replace("&", "and").strip()
 
-def extract_album_link(soup):
-    results = soup.find_all('li', {'class': 'songs-list-row'})
-    if results:
-        return None  # Skip singles
+def slugify_name(name):
+    safe = name.lower().replace(" ", "-")
+    return urllib.parse.quote(safe, safe='-')
 
-    album_section = soup.find_all('a', {'class': 'we-lockup__title'})
-    for link in album_section:
-        href = link.get('href')
-        if href and '/album/' in href:
-            return "https://music.apple.com" + href
-    return None
+def get_apple_music_album_link(artist, album, country_codes=["IN", "US"], retries=2):
+    base_url = "https://itunes.apple.com/search"
+    query = f"{artist} {album}"
+    query = clean_query(query)
 
-def search_album(artist, album):
-    base_url = "https://music.apple.com/in/search"
-    params = {"term": f"{artist} {album}"}
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    for country in country_codes:
+        params = {
+            "term": query,
+            "entity": "album",
+            "country": country,
+            "limit": 5,  # fetch more results to filter better
+        }
+        for attempt in range(retries):
+            try:
+                response = requests.get(base_url, params=params, timeout=5)
+                if response.status_code != 200 or not response.text.strip():
+                    time.sleep(1)
+                    continue
 
-    try:
-        response = requests.get(base_url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'lxml')
-        link = extract_album_link(soup)
-        return link
-    except Exception as e:
-        print(f"[ERROR] Search failed for '{artist} - {album}': {e}")
-        return None
+                data = response.json()
+                results = data.get("results", [])
+                for result in results:
+                    if result.get("collectionType") != "Album":
+                        continue  # Skip singles and other types
 
-def process_excel(input_file):
-    df = pd.read_excel(input_file)
-    df['Apple Music Link'] = None
-    links_list = []
+                    track_count = result.get("trackCount", 0)
+                    if track_count <= 3:
+                        continue  # Likely a single or EP
 
-    for idx, row in df.iterrows():
-        artist = str(row['Artist']).strip()
-        album = str(row['Album']).strip()
-        print(f"Searching: {artist} - {album}")
+                    coll_id = result.get("collectionId")
+                    coll_name = result.get("collectionName", "")
+                    slug = slugify_name(coll_name)
+                    return f"https://music.apple.com/{country.lower()}/album/{slug}/{coll_id}"
+                break
+            except Exception:
+                time.sleep(1)
+    return "Not Found"
 
-        link = search_album(artist, album)
-        if link:
-            df.at[idx, 'Apple Music Link'] = link
-            links_list.append(link)
-            print(f"✓ Found: {link}")
-        else:
-            print("✗ Not Found.")
+def process_excel(file_path):
+    if not os.path.exists(file_path):
+        print(f"❌ File not found: {file_path}")
+        return
 
-        time.sleep(random.uniform(5, 10))  # Wait between 5 to 10 seconds
+    sheets = pd.read_excel(file_path, sheet_name=None)
 
-    output_excel = "apple_music_links_output.xlsx"
-    output_txt = "apple_music_links.txt"
-    
-    df.to_excel(output_excel, index=False)
-    print(f"\n✅ Excel saved to {output_excel}")
+    for sheet_name, df in sheets.items():
+        print(f"\n🔍 Processing sheet: {sheet_name}")
+        if not {'Artist', 'Album'}.issubset(df.columns):
+            print("❌ Sheet skipped — must contain 'Artist' and 'Album' columns.")
+            continue
 
-    with open(output_txt, "w") as f:
-        for link in links_list:
-            f.write(link + "\n")
-    print(f"✅ TXT saved to {output_txt}")
+        links = []
+        for idx, row in df.iterrows():
+            artist = str(row['Artist'])
+            album = str(row['Album'])
+            link = get_apple_music_album_link(artist, album)
+            links.append(link)
+            print(f"[{idx+1}/{len(df)}] {artist} — {album} → {link}")
+
+            sleep_time = random.uniform(3, 7)
+            print(f"⏳ Sleeping for {sleep_time:.2f} seconds...")
+            time.sleep(sleep_time)
+
+        df['Apple Music Link'] = links
+        sheets[sheet_name] = df
+
+    output_file = os.path.splitext(file_path)[0] + "_with_links.xlsx"
+    with pd.ExcelWriter(output_file) as writer:
+        for sheet_name, df in sheets.items():
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    print(f"\n✅ Done. File saved as: {output_file}")
 
 if __name__ == "__main__":
-    input_file = "your_input_file.xlsx"  # Replace with your Excel file
-    process_excel(input_file)
+    path = input("Enter path to Excel file (.xlsx): ").strip()
+    process_excel(path)
