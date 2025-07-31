@@ -7,10 +7,9 @@ A Python-based utility that reads an Excel spreadsheet containing artist and alb
 ##  Features
 
 -  Extracts **only Apple Music album links** (ignores singles/EPs)
--  Supports `.xlsx` input with artist & album details
+-  Supports `.xlsx` input with artist & album details and can read all sheets
 -  Outputs:
   - `updated_music_links.xlsx` with album links
-  - `apple_music_links.txt` with raw URL list
 -  Adds random delay (5–10 seconds) between requests to avoid API rate limits
 -  Automatically skips failed lookups
 -  Apple Music India region support (can be customized)
@@ -67,11 +66,6 @@ After the script finishes, you’ll get:
 | Mabe Fratti    | Sentir Que No Sabes | https://music.apple.com/in/album/sentir-que-no-sabes/1740787009 |
 | Charli XCX     | BRAT               | https://music.apple.com/in/album/brat/1723251871             |
 
-### Text file (`apple_music_links.txt`)
-```
-https://music.apple.com/in/album/sentir-que-no-sabes/1740787009
-https://music.apple.com/in/album/brat/1723251871
-```
 
 ---
 
